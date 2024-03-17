@@ -8,6 +8,8 @@ io-path is available for Pekko and Akka (io-path-pekko and io-path-akka).
 
 blocking-io-pekko-play and blocking-io-akka-play provide a module for integration with Play framework.
 
+Please report bugs if you find them and feel free to DM me on Twitter if you have any questions.
+
 #### Example
 ```scala
 import io.github.karimagnusson.io.path._
@@ -27,6 +29,19 @@ val job = for {
   _       <- oldFolder.delete // Delete the folder and it's contents
   files   <- filesDir.listFiles
 } yield files
+```
+
+#### BlockingIO
+  
+BlockingIO can be used to run blocking code.
+```scala
+import io.github.karimagnusson.io.path._
+
+val io: BlockingIO = BlockingIO.default(system)
+
+val res: Future[SomeType] = io.run {
+  doSomeBlocking()
+}
 ```
 
 #### Integration with Play framework
