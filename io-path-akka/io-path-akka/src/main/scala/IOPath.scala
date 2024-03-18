@@ -38,7 +38,7 @@ object BlockingIO {
 
   def default(system: ActorSystem) = {
     DefaultBlockingIO(system.dispatchers.lookup(
-      "pekko.actor.default-blocking-io-dispatcher"
+      "akka.actor.default-blocking-io-dispatcher"
     ))
   }
 

@@ -8,6 +8,8 @@ io-path is available for Pekko and Akka (io-path-pekko and io-path-akka).
 
 blocking-io-pekko-play and blocking-io-akka-play provide a module for integration with Play framework.
 
+This project is set up to package for Scala 2.13 and Scala 3.
+
 Please report bugs if you find them and feel free to DM me on Twitter if you have any questions.
 
 #### Example
