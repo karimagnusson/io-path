@@ -13,7 +13,7 @@ inThisBuild(List(
   )
 ))
 
-ThisBuild / version := "0.9.0"
+ThisBuild / version := "0.9.1"
 ThisBuild / versionScheme := Some("early-semver")
 
 scalaVersion := "3.3.1"
@@ -29,13 +29,14 @@ lazy val root = (project in file("."))
     publish / skip := true
   )
 
-lazy val ioPath = (project in file("io-path-akka"))
+lazy val ioPath = (project in file("io-path"))
   .settings(
-    name := "io-path-akka",
+    name := "io-path",
     crossScalaVersions := supportedScalaVersions,
     libraryDependencies ++= Seq(
-      "com.typesafe.akka" %% "akka-actor" % "2.6.20",
-      "com.typesafe.akka" %% "akka-stream" % "2.6.20",
+      "org.apache.pekko" %% "pekko-actor" % "1.0.2",
+      "org.apache.pekko" %% "pekko-stream" % "1.0.2",
+      "org.apache.pekko" %% "pekko-http" % "1.0.1",
       "org.scala-lang.modules" %% "scala-collection-compat" % "2.11.0"
     ),
     scalacOptions ++= Seq(

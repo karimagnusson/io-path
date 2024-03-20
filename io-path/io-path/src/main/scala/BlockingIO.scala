@@ -14,17 +14,17 @@
 * limitations under the License.
 */
 
-package io.github.karimagnusson.io.blocking
+package io.github.karimagnusson.io.path
 
-import play.api.inject.Module
-import play.api.{Configuration, Environment}
-import io.github.karimagnusson.io.path.BlockingIO
+import scala.concurrent.{Future, ExecutionContext}
+import org.apache.pekko.actor.ActorSystem
 
 
-class BlockingIOModule extends Module {
+case class BlockingIO(system: ActorSystem) {
 
-  def bindings(env: Environment, conf: Configuration) = {
-    val provider = new BlockingIOProvider
-    Seq(bind[BlockingIO].to(provider))
-  }
+  val ec: ExecutionContext = system.dispatchers.lookup(
+    "pekko.actor.default-blocking-io-dispatcher"
+  )
+
+  def run[T](fn: => T): Future[T] = Future(fn)(ec)
 }

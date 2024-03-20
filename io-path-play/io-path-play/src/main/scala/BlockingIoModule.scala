@@ -14,14 +14,17 @@
 * limitations under the License.
 */
 
-package io.github.karimagnusson.io.blocking
+package io.github.karimagnusson.io.path
 
-import javax.inject._
-import akka.actor.ActorSystem
+import play.api.inject.Module
+import play.api.{Configuration, Environment}
 import io.github.karimagnusson.io.path.BlockingIO
 
 
-class BlockingIOProvider extends Provider[BlockingIO] {
-  @Inject private var system: ActorSystem = _
-  lazy val get: BlockingIO = BlockingIO.default(system)
+class IOPathModule extends Module {
+
+  def bindings(env: Environment, conf: Configuration) = {
+    val provider = new BlockingIOProvider
+    Seq(bind[BlockingIO].to(provider))
+  }
 }

@@ -13,7 +13,7 @@ inThisBuild(List(
   )
 ))
 
-ThisBuild / version := "0.9.0"
+ThisBuild / version := "0.9.1"
 ThisBuild / versionScheme := Some("early-semver")
 
 scalaVersion := "3.3.1"
@@ -23,20 +23,20 @@ lazy val scala213 = "2.13.12"
 lazy val supportedScalaVersions = List(scala213, scala3)
 
 lazy val root = (project in file("."))
-  .aggregate(blockingIoPlay)
+  .aggregate(ioPathPlay)
   .settings(
     crossScalaVersions := Nil,
     publish / skip := true
   )
 
-lazy val blockingIoPlay = (project in file("blocking-io-akka-play"))
+lazy val ioPathPlay = (project in file("io-path-play"))
   .settings(
-    name := "blocking-io-akka-play",
+    name := "io-path-play",
     crossScalaVersions := supportedScalaVersions,
     libraryDependencies ++= Seq(
-      "com.typesafe.akka" %% "akka-actor" % "2.6.20",
-      "com.typesafe.play" %% "play" % "2.9.1",
-      "io.github.karimagnusson" %% "io-path-akka" % "0.9.0"
+      "org.apache.pekko" %% "pekko-actor" % "1.0.2",
+      "org.playframework" %% "play" % "3.0.1",
+      "io.github.karimagnusson" %% "io-path" % "0.9.1"
     ),
     scalacOptions ++= Seq(
       "-encoding", "utf8",

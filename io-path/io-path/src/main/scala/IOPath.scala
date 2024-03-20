@@ -17,50 +17,21 @@
 package io.github.karimagnusson.io.path
 
 import java.io.IOException
-import java.nio.file.attribute.FileTime
-import java.nio.file.{
-  Files,
-  Paths,
-  Path,
-  StandardOpenOption
-}
+import java.nio.file.{Files, Paths, Path, StandardOpenOption}
 
 import scala.concurrent.{Future, ExecutionContext}
+import scala.concurrent.duration._
 import scala.jdk.CollectionConverters._
 
-import akka.actor.ActorSystem
-import akka.util.ByteString
-import akka.stream.scaladsl.{Source, Sink, FileIO, Framing}
-import akka.stream.IOResult
-
-
-object BlockingIO {
-
-  def default(system: ActorSystem) = {
-    DefaultBlockingIO(system.dispatchers.lookup(
-      "akka.actor.default-blocking-io-dispatcher"
-    ))
-  }
-
-  def withContext(ec: ExecutionContext) = DefaultBlockingIO(ec)
-}
-
-trait BlockingIO {
-  val ec: ExecutionContext
-  def run[T](fn: => T): Future[T] = Future(fn)(ec)
-}
-
-case class DefaultBlockingIO(ec: ExecutionContext) extends BlockingIO
-
-case class IOPathInfo(
-  path: Path,
-  isDir: Boolean,
-  isHidden: Boolean,
-  isReadable: Boolean,
-  isWritable: Boolean,
-  isSymbolicLink: Boolean,
-  lastModified: FileTime
-)
+import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.util.ByteString
+import org.apache.pekko.stream.scaladsl.{Source, Sink, FileIO, Framing}
+import org.apache.pekko.stream.IOResult
+import org.apache.pekko.http.scaladsl.Http
+import org.apache.pekko.http.scaladsl.model.HttpMethods._
+import org.apache.pekko.http.scaladsl.model.headers.RawHeader
+import org.apache.pekko.http.scaladsl.model._
+import org.apache.pekko.NotUsed
 
 
 object IOPath {
@@ -90,7 +61,7 @@ object IOPath {
 
 sealed trait IOPath {
 
-  val io: BlockingIO
+  implicit val io: BlockingIO
   
   val path: Path
   def name = path.getFileName.toString
@@ -98,13 +69,13 @@ sealed trait IOPath {
   def isDir: Boolean
   def show = path.toString
   def startsWithDot = name.head == '.'
-  def parent(implicit io: BlockingIO) = IODir(path.getParent)
+  def parent = IODir(path.getParent)
 
   def delete: Future[Unit]
   def copyTo(dest: IODir): Future[Unit]
-  def size(implicit ec: ExecutionContext): Future[Long]
-  def isEmpty(implicit ec: ExecutionContext): Future[Boolean]
-  def nonEmpty(implicit ec: ExecutionContext): Future[Boolean]
+  def size: Future[Long]
+  def isEmpty: Future[Boolean]
+  def nonEmpty: Future[Boolean]
 
   def exists: Future[Boolean] = io.run {
     Files.exists(path)
@@ -145,6 +116,9 @@ object IOFile {
 
 case class IOFile(path: Path)(implicit val io: BlockingIO) extends IOPath {
 
+  implicit val system: ActorSystem = io.system
+  implicit val ec: ExecutionContext = io.system.dispatcher
+
   def isFile = true
   def isDir = false
 
@@ -164,17 +138,17 @@ case class IOFile(path: Path)(implicit val io: BlockingIO) extends IOPath {
 
   def assert: Future[IOFile] = io.run(assertFile)
 
-  def create(implicit ec: ExecutionContext): Future[IOFile] = for {
+  def create: Future[IOFile] = for {
     _ <- io.run(Files.createFile(path))
   } yield this
 
-  def size(implicit ec: ExecutionContext): Future[Long] =
+  def size: Future[Long] =
     io.run(Files.size(path))
 
-  def isEmpty(implicit ec: ExecutionContext): Future[Boolean] =
+  def isEmpty: Future[Boolean] =
     size.map(_ == 0)
 
-  def nonEmpty(implicit ec: ExecutionContext): Future[Boolean] =
+  def nonEmpty: Future[Boolean] =
     size.map(_ > 0)
 
   def delete: Future[Unit] = io.run {
@@ -187,11 +161,11 @@ case class IOFile(path: Path)(implicit val io: BlockingIO) extends IOPath {
     Files.readAllBytes(path)
   }
 
-  def readString(implicit ec: ExecutionContext): Future[String] = for {
+  def readString: Future[String] = for {
     bytes <- readBytes
   } yield bytes.map(_.toChar).mkString
 
-  def readLines(implicit ec: ExecutionContext): Future[List[String]] = for {
+  def readLines: Future[List[String]] = for {
     content <- readString
   } yield content.split("\n").toList
 
@@ -228,15 +202,21 @@ case class IOFile(path: Path)(implicit val io: BlockingIO) extends IOPath {
 
   // rename
 
-  def rename(target: IOFile)(implicit ec: ExecutionContext): Future[IOFile] = for {
+  def rename(target: IOFile): Future[IOFile] = for {
     _ <- io.run(Files.move(path, target.path))
   } yield target
 
-  def rename(fileName: String)(implicit ec: ExecutionContext): Future[IOFile] =
+  def rename(fileName: String): Future[IOFile] =
     rename(parent.file(fileName))
 
-  def moveTo(dest: IODir)(implicit ec: ExecutionContext): Future[IOFile] =
+  def moveTo(dest: IODir): Future[IOFile] =
     rename(dest.file(name))
+
+  // mime
+
+  def mimeType: Future[String] = io.run {
+    Files.probeContentType(path)
+  }
 
   // stream
 
@@ -250,16 +230,68 @@ case class IOFile(path: Path)(implicit val io: BlockingIO) extends IOPath {
     stream
       .via(Framing.delimiter(ByteString("\n"), 256, true))
       .map(_.utf8String)
+
+  // download
+
+  def download(url: String): Future[IOFile] =
+    download(url, Nil)
+
+  def download(url: String, headers: Map[String, String]): Future[IOFile] =
+    download(url, headers.map(h => RawHeader(h._1, h._2)).toList)
+
+  def download(url: String, headers: List[HttpHeader]): Future[IOFile] = {
+    Http()
+      .singleRequest(HttpRequest(GET, Uri(url), headers))
+      .flatMap(_.entity.dataBytes.runWith(asSink))
+      .map(_ => this)
+  }
+
+  // upload
+
+  def upload(url: String): Future[String] =
+    upload(url, Nil)
+
+  def upload(url: String, headers: Map[String, String]): Future[String] =
+    upload(url, headers.map(h => RawHeader(h._1, h._2)).toList)
+
+  def upload(url: String, headers: List[HttpHeader]): Future[String] = {
+    for {
+      contentType <- mimeType.map { mime =>
+        ContentType.parse(mime) match {
+          case Left(_) => ContentTypes.NoContentType
+          case Right(contentType) => contentType
+        }
+      }
+      rsp <- Http()
+        .singleRequest(HttpRequest(
+          POST,
+          Uri(url),
+          headers,
+          HttpEntity(contentType, stream)
+        ))
+        .flatMap(_.entity.toStrict(2.seconds))
+        .map(_.data.utf8String)
+    } yield rsp
+  }
 }
 
 
 object IODir {
 
   def fromPath(path: Path)(implicit io: BlockingIO) = IODir(path)
-  def rel(parts: String*)(implicit io: BlockingIO) = IODir(Paths.get(IOPath.root, parts: _*))
-  def get(first: String, rest: String*)(implicit io: BlockingIO) = IODir(Paths.get(first, rest: _*))
+  
+  def rel(parts: String*)(
+    implicit io: BlockingIO
+  ) = IODir(Paths.get(IOPath.root, parts: _*))
+  
+  def get(first: String, rest: String*)(
+    implicit io: BlockingIO
+  ) = IODir(Paths.get(first, rest: _*))
 
-  def mkdirs(dirs: Seq[IODir])(implicit io: BlockingIO, ec: ExecutionContext): Future[Seq[IODir]] = for {
+  def mkdirs(dirs: Seq[IODir])(
+    implicit io: BlockingIO,
+             ec: ExecutionContext
+  ): Future[Seq[IODir]] = for {
     _ <- io.run {
       dirs
         .map(_.path)
@@ -271,6 +303,8 @@ object IODir {
 
 
 case class IODir(path: Path)(implicit val io: BlockingIO) extends IOPath {
+
+  implicit val ec: ExecutionContext = io.system.dispatcher
 
   private def listDir(p: Path): List[Path] =
     Files.list(p).iterator.asScala.toList
@@ -311,34 +345,34 @@ case class IODir(path: Path)(implicit val io: BlockingIO) extends IOPath {
   def assert: Future[IODir] =
     io.run(assertDir)
 
-  def size(implicit ec: ExecutionContext): Future[Long] = io.run {
+  def size: Future[Long] = io.run {
     walkDir(path).foldLeft(0L) { (acc, p) => acc + Files.size(p) }
   }
 
-  def isEmpty(implicit ec: ExecutionContext): Future[Boolean] =
+  def isEmpty: Future[Boolean] =
     list.map(_.isEmpty)
 
-  def nonEmpty(implicit ec: ExecutionContext): Future[Boolean] =
+  def nonEmpty: Future[Boolean] =
     list.map(_.nonEmpty)
 
-  def create(implicit ec: ExecutionContext): Future[IODir] = for {
+  def create: Future[IODir] = for {
     _ <- io.run(Files.createDirectories(path))
   } yield this
 
-  def mkdir(dirName: String)(implicit ec: ExecutionContext): Future[IODir] =
+  def mkdir(dirName: String): Future[IODir] =
     dir(dirName).create
 
-  def mkdirs(dirNames: Seq[String])(implicit ec: ExecutionContext): Future[Seq[IODir]] =
+  def mkdirs(dirNames: Seq[String]): Future[Seq[IODir]] =
     IODir.mkdirs(dirNames.map(dir))
 
-  def rename(dest: IODir)(implicit ec: ExecutionContext): Future[IODir] = for {
+  def rename(dest: IODir): Future[IODir] = for {
     _ <- io.run(Files.move(path, dest.path))
   } yield dest
 
-  def rename(dirName: String)(implicit ec: ExecutionContext): Future[IODir] =
+  def rename(dirName: String): Future[IODir] =
     rename(parent.dir(dirName))
 
-  def moveTo(dest: IODir)(implicit ec: ExecutionContext): Future[IODir] =
+  def moveTo(dest: IODir): Future[IODir] =
     rename(dest.dir(name))
 
   def moveHere(paths: Seq[IOPath]): Future[Seq[IOPath]] = io.run {
@@ -384,10 +418,10 @@ case class IODir(path: Path)(implicit val io: BlockingIO) extends IOPath {
     listDir(path).map(toIOPath)
   }
 
-  def listFiles(implicit ec: ExecutionContext): Future[List[IOFile]] =
+  def listFiles: Future[List[IOFile]] =
     list.map(IOPath.pickFiles(_))
 
-  def listDirs(implicit ec: ExecutionContext): Future[List[IODir]] =
+  def listDirs: Future[List[IODir]] =
     list.map(IOPath.pickDirs(_))
 
   // walk
@@ -396,21 +430,49 @@ case class IODir(path: Path)(implicit val io: BlockingIO) extends IOPath {
     walkDir(path).map(toIOPath)
   }
 
-  def walkFiles(implicit ec: ExecutionContext): Future[List[IOFile]] =
+  def walkFiles: Future[List[IOFile]] =
     walk.map(IOPath.pickFiles(_))
 
-  def walkDirs(implicit ec: ExecutionContext): Future[List[IODir]] =
+  def walkDirs: Future[List[IODir]] =
     walk.map(IOPath.pickDirs(_))
+
+  // stream walk
+
+  def streamWalk: Source[IOPath, NotUsed] =
+    Source.unfoldAsync(new Walker(path))(_.next).mapConcat(i => i)
+
+  def streamWalkFiles: Source[IOFile, NotUsed] =
+    streamWalk.filter(_.isFile).map(_.asInstanceOf[IOFile])
+
+  def streamWalkDirs: Source[IODir, NotUsed] =
+    streamWalk.filter(_.isDir).map(_.asInstanceOf[IODir])
+
+  private class Walker(path: Path) {
+
+    var iteratorOpt: Option[Iterator[Path]] = None
+
+    def getIterator = iteratorOpt match {
+      case Some(iter) => Future.successful(iter)
+      case None => for {
+        iter  <- io.run(Files.walk(path).iterator.asScala)
+        _     <- Future.successful { iteratorOpt = Some(iter) }
+      } yield iter
+    }
+
+    def next = for {
+      iterator  <- getIterator
+      batch     <- io.run {
+        iterator.take(500).toList.map(toIOPath)
+      }
+      batchOpt  <- Future.successful {
+        batch match {
+          case Nil => None
+          case paths => Some((this, paths))
+        }
+      }
+    } yield batchOpt
+  }
 }
-
-
-
-
-
-
-
-
-
 
 
 

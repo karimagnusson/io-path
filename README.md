@@ -4,9 +4,9 @@
 
 io-path is a simple library for working with files and folders. It is a wrapper for java.nio.files.Path. Files and folders are handled separately with IOFile and IODir which provide convenient methods for working with files and folders.
 
-io-path is available for Pekko and Akka (io-path-pekko and io-path-akka).
+io-path depends on Pekko. Akka is now licenced and not open for further development.
 
-blocking-io-pekko-play and blocking-io-akka-play provide a module for integration with Play framework.
+io-path-play provides a module for integration with Play framework.
 
 This project is set up to package for Scala 2.13 and Scala 3.
 
@@ -27,6 +27,7 @@ val oldFolder = filesDir.dir("old-folder") // Folder in folder 'files'
 val job = for {
   lines   <- textFile.readLines
   _       <- filesDir.file("text-copy.txt").write(lines)
+  _       <- filesDir.file("profile.jpg").download("http://mysite.com/profile.jpg")
   _       <- oldFolder.dir("docs").copyTo(filesDir) // Copy 'docs' and it's contents to 'files'
   _       <- oldFolder.delete // Delete the folder and it's contents
   files   <- filesDir.listFiles
@@ -130,9 +131,16 @@ def copyTo(dest: IODir): Future[Unit]
 def rename(target: IOFile): Future[IOFile]
 def rename(fileName: String): Future[IOFile]
 def moveTo(dest: IODir): Future[IOFile]
+def mimeType: Future[String] // detect mime type
 def asSink: Sink[ByteString, Future[IOResult]]
 def stream: Source[ByteString, Future[IOResult]]
 def streamLines: Source[String, Future[IOResult]]
+def download(url: String): Future[IOFile]
+def download(url: String, headers: Map[String, String]): Future[IOFile]
+def download(url: String, headers: List[HttpHeader]): Future[IOFile]
+def upload(url: String): Future[String]
+def upload(url: String, headers: Map[String, String]): Future[String]
+def upload(url: String, headers: List[HttpHeader]): Future[String]
 ```
 
 #### IODir
@@ -174,5 +182,8 @@ def listDirs: Future[List[IODir]]
 def walk: Future[List[IOPath]]
 def walkFiles: Future[List[IOFile]]
 def walkDirs: Future[List[IODir]]
+def streamWalk: Source[IOPath, NotUsed]
+def streamWalkFiles: Source[IOFile, NotUsed]
+def streamWalkDirs: Source[IODir, NotUsed]
 ```
 
