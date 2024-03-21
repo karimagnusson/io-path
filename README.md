@@ -132,9 +132,9 @@ def rename(target: IOFile): Future[IOFile]
 def rename(fileName: String): Future[IOFile]
 def moveTo(dest: IODir): Future[IOFile]
 def mimeType: Future[String] // detect mime type
-def gzip: Future[IOFile]
+def gzip: Future[IOFile] // file name + .gz
 def gzip(out: IOFile): Future[IOFile]
-def ungzip: Future[IOFile]
+def ungzip: Future[IOFile] // file name - .gz
 def ungzip(out: IOFile): Future[IOFile]
 def asSink: Sink[ByteString, Future[IOResult]]
 def stream: Source[ByteString, Future[IOResult]]
