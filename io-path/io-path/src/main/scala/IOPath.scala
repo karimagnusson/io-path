@@ -33,6 +33,8 @@ import org.apache.pekko.http.scaladsl.model.headers.RawHeader
 import org.apache.pekko.http.scaladsl.model._
 import org.apache.pekko.NotUsed
 
+import io.github.karimagnusson.io.path.utils.Gzip
+
 
 object IOPath {
   
@@ -171,26 +173,25 @@ case class IOFile(path: Path)(implicit val io: BlockingIO) extends IOPath {
 
   // write
 
-  def write(bytes: Array[Byte]): Future[Unit] =
-    io.run(Files.write(path, bytes))
+  def write(bytes: Array[Byte]): Future[IOFile] =
+    io.run(Files.write(path, bytes)).map(_ => this)
 
-  def write(str: String): Future[Unit] =
-    write(str.getBytes)
+  def write(str: String): Future[IOFile] =
+    write(str.getBytes).map(_ => this)
 
-  def write(lines: Seq[String]): Future[Unit] =
-    write(lines.mkString("\n").getBytes)
+  def write(lines: Seq[String]): Future[IOFile] =
+    write(lines.mkString("\n").getBytes).map(_ => this)
 
   // append
 
-  def append(bytes: Array[Byte]): Future[Unit] = io.run {
-    Files.write(path, bytes, StandardOpenOption.APPEND)
-  }
+  def append(bytes: Array[Byte]): Future[IOFile] =
+    io.run(Files.write(path, bytes, StandardOpenOption.APPEND)).map(_ => this)
 
-  def append(str: String): Future[Unit] =
-    append(str.getBytes)
+  def append(str: String): Future[IOFile] =
+    append(str.getBytes).map(_ => this).map(_ => this)
 
-  def append(lines: Seq[String]): Future[Unit] =
-    append(("\n" + lines.mkString("\n")).getBytes)
+  def append(lines: Seq[String]): Future[IOFile] =
+    append(("\n" + lines.mkString("\n")).getBytes).map(_ => this)
 
   // copy
 
@@ -217,6 +218,26 @@ case class IOFile(path: Path)(implicit val io: BlockingIO) extends IOPath {
   def mimeType: Future[String] = io.run {
     Files.probeContentType(path)
   }
+
+  // gzip
+
+  def gzip: Future[IOFile] =
+    gzip(parent.file(name + ".gz"))
+
+  def gzip(out: IOFile): Future[IOFile] = for {
+    inBytes   <- readBytes
+    outBytes  <- Future { Gzip.compress(inBytes) }
+    _         <- out.write(outBytes)
+  } yield out
+
+  def ungzip: Future[IOFile] =
+    gzip(parent.file(name.substring(0, name.size - extLower.size)))
+
+  def ungzip(out: IOFile): Future[IOFile] = for {
+    inBytes   <- readBytes
+    outBytes  <- Future { Gzip.decompress(inBytes) }
+    _         <- out.write(outBytes)
+  } yield out
 
   // stream
 
