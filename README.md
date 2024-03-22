@@ -28,6 +28,8 @@ val job = for {
   lines   <- textFile.readLines
   _       <- filesDir.file("text-copy.txt").write(lines)
   _       <- filesDir.file("profile.jpg").download("http://mysite.com/profile.jpg")
+  textGz  <- textFile.gzip // gzip 'text.txt'
+  _       <- textGz.upload("http://mysite.com/files") // upload 'text.txt.gz'
   _       <- oldFolder.dir("docs").copyTo(filesDir) // Copy 'docs' and it's contents to 'files'
   _       <- oldFolder.delete // Delete the folder and it's contents
   files   <- filesDir.listFiles
