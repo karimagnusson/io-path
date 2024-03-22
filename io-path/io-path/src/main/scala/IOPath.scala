@@ -33,7 +33,7 @@ import org.apache.pekko.http.scaladsl.model.headers.RawHeader
 import org.apache.pekko.http.scaladsl.model._
 import org.apache.pekko.NotUsed
 
-import io.github.karimagnusson.io.path.utils.Gzip
+import io.github.karimagnusson.io.path.utils.Archive
 
 
 object IOPath {
@@ -224,20 +224,26 @@ case class IOFile(path: Path)(implicit val io: BlockingIO) extends IOPath {
   def gzip: Future[IOFile] =
     gzip(parent.file(name + ".gz"))
 
-  def gzip(out: IOFile): Future[IOFile] = for {
-    inBytes   <- readBytes
-    outBytes  <- Future { Gzip.compress(inBytes) }
-    _         <- out.write(outBytes)
-  } yield out
+  def gzip(out: IOFile): Future[IOFile] =
+    io.run(Archive.gzip(path, out.path)).map(_ => out)
 
   def ungzip: Future[IOFile] =
-    gzip(parent.file(name.substring(0, name.size - extLower.size)))
+    ungzip(parent.file(name.substring(0, name.size - 3)))
 
-  def ungzip(out: IOFile): Future[IOFile] = for {
-    inBytes   <- readBytes
-    outBytes  <- Future { Gzip.decompress(inBytes) }
-    _         <- out.write(outBytes)
-  } yield out
+  def ungzip(out: IOFile): Future[IOFile] =
+    io.run(Archive.ungzip(path, out.path)).map(_ => out)
+
+  // untar
+
+  def untar: Future[IODir] = untar(parent)
+
+  def untar(dest: IODir): Future[IODir] =
+    io.run(Archive.untar(path, dest.path, false)).map(_ => dest)
+
+  def untarGz: Future[IODir] = untarGz(parent)
+
+  def untarGz(dest: IODir): Future[IODir] =
+    io.run(Archive.untar(path, dest.path, true)).map(_ => dest)
 
   // stream
 
@@ -431,6 +437,22 @@ case class IODir(path: Path)(implicit val io: BlockingIO) extends IOPath {
       }
     }
     loop(this, other)
+  }
+
+  // tar
+
+  def tar: Future[IOFile] = tar(parent)
+
+  def tar(dest: IODir): Future[IOFile] = {
+    val tarFile = dest.file(name + ".tar")
+    io.run(Archive.tar(path, tarFile.path, false)).map(_ => tarFile)
+  }
+
+  def tarGz: Future[IOFile] = tarGz(parent)
+
+  def tarGz(dest: IODir): Future[IOFile] = {
+    val tarGzFile = dest.file(name + ".tar.gz")
+    io.run(Archive.tar(path, tarGzFile.path, true)).map(_ => tarGzFile)
   }
 
   // list
