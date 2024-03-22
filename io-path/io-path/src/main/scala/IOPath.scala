@@ -233,6 +233,13 @@ case class IOFile(path: Path)(implicit val io: BlockingIO) extends IOPath {
   def ungzip(out: IOFile): Future[IOFile] =
     io.run(Archive.ungzip(path, out.path)).map(_ => out)
 
+  // zio
+
+  def unzip: Future[IODir] = unzip(parent)
+
+  def unzip(dest: IODir): Future[IODir] =
+    io.run(Archive.unzip(path, dest.path)).map(_ => dest)
+
   // untar
 
   def untar: Future[IODir] = untar(parent)
@@ -438,6 +445,13 @@ case class IODir(path: Path)(implicit val io: BlockingIO) extends IOPath {
     }
     loop(this, other)
   }
+
+  // zip
+
+  def zip: Future[IOFile] = zip(parent.file(name + ".zip"))
+
+  def zip(out: IOFile): Future[IOFile] =
+    io.run(Archive.zip(path, out.path)).map(_ => out)
 
   // tar
 
