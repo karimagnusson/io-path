@@ -138,8 +138,8 @@ def gzip: Future[IOFile] // file name + .gz
 def gzip(out: IOFile): Future[IOFile]
 def ungzip: Future[IOFile] // file name - .gz
 def ungzip(out: IOFile): Future[IOFile]
-def unzip: Future[IOFile] // file name - .gz
-def unzip(out: IOFile): Future[IOFile]
+def unzip: Future[IODir]
+def unzip(dest: IODir): Future[IODir]
 def untar: Future[IODir]
 def untar(dest: IODir): Future[IODir]
 def untarGz: Future[IODir]
