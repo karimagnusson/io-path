@@ -18,7 +18,7 @@ import io.github.karimagnusson.io.path._
 
 implicit val system: ActorSystem = ActorSystem()
 implicit val ec: ExecutionContext = system.dispatcher
-implicit val io: BlockingIO = BlockingIO.default(system) // Provides blocking context
+implicit val io: BlockingIO = BlockingIO(system) // Provides blocking context
 
 val filesDir = IODir.rel("files") // Folder in project root
 val textFile = filesDir.file("text.txt") // File in folder 'files'
