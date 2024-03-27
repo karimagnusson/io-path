@@ -514,27 +514,23 @@ case class IODir(path: Path)(implicit val io: BlockingIO) extends IOPath {
     }
   }
 
-  def tar: Future[IOFile] = tar(parent)
+  def tar: Future[IOFile] = tar(parent.file(name + ".tar"))
 
-  def tar(dest: IODir): Future[IOFile] = {
-    val tarFile = dest.file(name + ".tar")
+  def tar(out: IOFile): Future[IOFile] =
     streamWalk
       .mapAsync(1)(tarMetadata)
       .via(Archive.tar())
-      .runWith(FileIO.toPath(tarFile.path))
-      .map(_ => tarFile)
-  }
+      .runWith(FileIO.toPath(out.path))
+      .map(_ => out)
   
-  def tarGz: Future[IOFile] = tarGz(parent)
+  def tarGz: Future[IOFile] = tarGz(parent.file(name + ".tar.gz"))
 
-  def tarGz(dest: IODir): Future[IOFile] = {
-    val tarGzFile = dest.file(name + ".tar.gz")
+  def tarGz(out: IOFile): Future[IOFile] =
     streamWalk
       .mapAsync(1)(tarMetadata)
       .via(Archive.tar().via(Compression.gzip))
-      .runWith(FileIO.toPath(tarGzFile.path))
-      .map(_ => tarGzFile)
-  }
+      .runWith(FileIO.toPath(out.path))
+      .map(_ => out)
   
   // list
 

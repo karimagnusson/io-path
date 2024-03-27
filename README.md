@@ -190,9 +190,9 @@ def moveHere(paths: Seq[IOPath]): Future[Seq[IOPath]]
 def delete: Future[Unit] // Delete the folder and all its contents
 def copyTo(other: IODir): Future[Unit] // Copy the folder and all its contents
 def tar: Future[IOFile]
-def tar(dest: IODir): Future[IOFile]
+def tar(out: IOFile): Future[IOFile]
 def tarGz: Future[IOFile]
-def tarGz(dest: IODir): Future[IOFile]
+def tarGz(out: IOFile): Future[IOFile]
 def list: Future[List[IOPath]] // List all the files and folders
 def listFiles: Future[List[IOFile]]
 def listDirs: Future[List[IODir]]
