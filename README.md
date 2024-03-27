@@ -42,7 +42,7 @@ BlockingIO can be used to run blocking code.
 ```scala
 import io.github.karimagnusson.io.path._
 
-val io: BlockingIO = BlockingIO.default(system)
+val io: BlockingIO = BlockingIO(system)
 
 val res: Future[SomeType] = io.run {
   doSomeBlocking()
