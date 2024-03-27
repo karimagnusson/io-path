@@ -138,8 +138,9 @@ def gzip: Future[IOFile] // file name + .gz
 def gzip(out: IOFile): Future[IOFile]
 def ungzip: Future[IOFile] // file name - .gz
 def ungzip(out: IOFile): Future[IOFile]
-def unzip: Future[IODir]
-def unzip(dest: IODir): Future[IODir]
+def zip(dir: IODir): Future[IOFile] // zip all files in a folder
+def zip(files: List[IOFile]): Future[IOFile] // zip a list of filles
+def unzip(dest: IODir): Future[List[IOFile]] // unzip does not support folders
 def untar: Future[IODir]
 def untar(dest: IODir): Future[IODir]
 def untarGz: Future[IODir]
@@ -188,8 +189,6 @@ def moveTo(dest: IODir): Future[IODir]
 def moveHere(paths: Seq[IOPath]): Future[Seq[IOPath]]
 def delete: Future[Unit] // Delete the folder and all its contents
 def copyTo(other: IODir): Future[Unit] // Copy the folder and all its contents
-def zip: Future[IOFile]
-def zip(dest: IODir): Future[IOFile]
 def tar: Future[IOFile]
 def tar(dest: IODir): Future[IOFile]
 def tarGz: Future[IOFile]

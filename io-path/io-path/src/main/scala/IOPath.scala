@@ -25,15 +25,18 @@ import scala.jdk.CollectionConverters._
 
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.util.ByteString
+import org.apache.pekko.NotUsed
+import org.apache.pekko.stream.scaladsl.Compression
+import org.apache.pekko.stream.connectors.file.scaladsl.Archive
+import org.apache.pekko.stream.connectors.file.{TarArchiveMetadata, ArchiveMetadata}
 import org.apache.pekko.stream.scaladsl.{Source, Sink, FileIO, Framing}
 import org.apache.pekko.stream.IOResult
 import org.apache.pekko.http.scaladsl.Http
 import org.apache.pekko.http.scaladsl.model.HttpMethods._
 import org.apache.pekko.http.scaladsl.model.headers.RawHeader
 import org.apache.pekko.http.scaladsl.model._
-import org.apache.pekko.NotUsed
 
-import io.github.karimagnusson.io.path.utils.Archive
+//import io.github.karimagnusson.io.path.utils.Archive
 
 
 object IOPath {
@@ -225,33 +228,86 @@ case class IOFile(path: Path)(implicit val io: BlockingIO) extends IOPath {
     gzip(parent.file(name + ".gz"))
 
   def gzip(out: IOFile): Future[IOFile] =
-    io.run(Archive.gzip(path, out.path)).map(_ => out)
+    FileIO.fromPath(path)
+      .via(Compression.gzip)
+      .runWith(FileIO.toPath(out.path))
+      .map(_ => out)
 
+  
   def ungzip: Future[IOFile] =
     ungzip(parent.file(name.substring(0, name.size - 3)))
 
   def ungzip(out: IOFile): Future[IOFile] =
-    io.run(Archive.ungzip(path, out.path)).map(_ => out)
+    FileIO.fromPath(path)
+      .via(Compression.gunzip())
+      .runWith(FileIO.toPath(out.path))
+      .map(_ => out)
 
-  // zio
+  // zip
 
-  def unzip: Future[IODir] = unzip(parent)
+  def zip(dir: IODir): Future[IOFile] = dir.listFiles.flatMap(zip)
 
-  def unzip(dest: IODir): Future[IODir] =
-    io.run(Archive.unzip(path, dest.path)).map(_ => dest)
+  def zip(files: List[IOFile]): Future[IOFile] = 
+    Source(files.map { file =>
+      (ArchiveMetadata(file.name), FileIO.fromPath(file.path))
+    })
+    .via(Archive.zip())
+    .runWith(FileIO.toPath(path))
+    .map(_ => this)
 
+  def unzip(dest: IODir): Future[List[IOFile]] =
+    Archive
+      .zipReader(path.toFile)
+      .mapAsync(1) {
+        case (metadata, source) =>
+          val file = dest.file(metadata.name)
+          source.runWith(FileIO.toPath(file.path)).map(_ => file)
+      }
+      .runWith(Sink.seq)
+      .map(_.toList)
+  
   // untar
 
   def untar: Future[IODir] = untar(parent)
 
   def untar(dest: IODir): Future[IODir] =
-    io.run(Archive.untar(path, dest.path, false)).map(_ => dest)
+    FileIO.fromPath(path)
+      .via(Archive.tarReader())
+      .mapAsync(1) {
+        case (metadata, source) =>
+          if (metadata.isDirectory) {
+            dest.add(IODir.get(metadata.filePath)).create
+          } else {
+            val file = dest.add(IOFile.get(metadata.filePath))
+            for {
+              _ <- file.parent.create
+              _ <- source.runWith(FileIO.toPath(file.path))
+            } yield ()
+          }
+      }
+      .runWith(Sink.ignore)
+      .map(_ => dest)
 
   def untarGz: Future[IODir] = untarGz(parent)
 
   def untarGz(dest: IODir): Future[IODir] =
-    io.run(Archive.untar(path, dest.path, true)).map(_ => dest)
-
+    FileIO.fromPath(path)
+      .via(Compression.gunzip().via(Archive.tarReader()))
+      .mapAsync(1) {
+        case (metadata, source) =>
+          if (metadata.isDirectory) {
+            dest.add(IODir.get(metadata.filePath)).create
+          } else {
+            val file = dest.add(IOFile.get(metadata.filePath))
+            for {
+              _ <- file.parent.create
+              _ <- source.runWith(FileIO.toPath(file.path))
+            } yield ()
+          }
+      }
+      .runWith(Sink.ignore)
+      .map(_ => dest)
+  
   // stream
 
   def asSink: Sink[ByteString, Future[IOResult]] =
@@ -316,7 +372,7 @@ object IODir {
   
   def rel(parts: String*)(
     implicit io: BlockingIO
-  ) = IODir(Paths.get(IOPath.root, parts: _*))
+  ) = get(IOPath.root, parts: _*)
   
   def get(first: String, rest: String*)(
     implicit io: BlockingIO
@@ -338,6 +394,7 @@ object IODir {
 
 case class IODir(path: Path)(implicit val io: BlockingIO) extends IOPath {
 
+  implicit val system: ActorSystem = io.system
   implicit val ec: ExecutionContext = io.system.dispatcher
 
   private def listDir(p: Path): List[Path] =
@@ -446,29 +503,39 @@ case class IODir(path: Path)(implicit val io: BlockingIO) extends IOPath {
     loop(this, other)
   }
 
-  // zip
-
-  def zip: Future[IOFile] = zip(parent.file(name + ".zip"))
-
-  def zip(out: IOFile): Future[IOFile] =
-    io.run(Archive.zip(path, out.path)).map(_ => out)
-
   // tar
+
+  private val tarMetadata: IOPath => Future[Tuple2[TarArchiveMetadata, Source[ByteString,  Any]]] = {
+    case file: IOFile => io.run {
+      (TarArchiveMetadata(parent.path.relativize(file.path).toString, Files.size(file.path)), FileIO.fromPath(file.path))
+    }
+    case dir: IODir => Future.successful {
+      (TarArchiveMetadata.directory(parent.path.relativize(dir.path).toString), Source.empty)
+    }
+  }
 
   def tar: Future[IOFile] = tar(parent)
 
   def tar(dest: IODir): Future[IOFile] = {
     val tarFile = dest.file(name + ".tar")
-    io.run(Archive.tar(path, tarFile.path, false)).map(_ => tarFile)
+    streamWalk
+      .mapAsync(1)(tarMetadata)
+      .via(Archive.tar())
+      .runWith(FileIO.toPath(tarFile.path))
+      .map(_ => tarFile)
   }
-
+  
   def tarGz: Future[IOFile] = tarGz(parent)
 
   def tarGz(dest: IODir): Future[IOFile] = {
     val tarGzFile = dest.file(name + ".tar.gz")
-    io.run(Archive.tar(path, tarGzFile.path, true)).map(_ => tarGzFile)
+    streamWalk
+      .mapAsync(1)(tarMetadata)
+      .via(Archive.tar().via(Compression.gzip))
+      .runWith(FileIO.toPath(tarGzFile.path))
+      .map(_ => tarGzFile)
   }
-
+  
   // list
 
   def list: Future[List[IOPath]] = io.run {
