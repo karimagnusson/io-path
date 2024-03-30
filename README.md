@@ -173,9 +173,9 @@ def isFile: Boolean
 def isDir: Boolean
 def relTo(other: IODir): IODir // The rest of the path relative to other
 def relTo(other: IOFile) = IOFile
-def add(other: IOPath): IOPath
 def add(other: IOFile): IOFile
 def add(other: IODir): IODir
+def add(other: IOPath): IOPath
 def file(fileName: String): IOFile
 def dir(dirName: String): IODir
 def assert: Future[IODir] // Assert that the folder exists and that it is a folder
@@ -189,8 +189,9 @@ def rename(dest: IODir): Future[IODir]
 def rename(dirName: String): Future[IODir]
 def moveTo(dest: IODir): Future[IODir]
 def moveHere(paths: Seq[IOPath]): Future[Seq[IOPath]]
-def delete: Future[Unit] // Delete the folder and all its contents
 def copyTo(other: IODir): Future[Unit] // Copy the folder and all its contents
+def delete: Future[Unit] // Delete the folder and all its contents
+def empty: Future[IODir] // Delete the contents of the folder
 def tar: Future[IOFile]
 def tar(out: IOFile): Future[IOFile]
 def tarGz: Future[IOFile]
@@ -198,7 +199,7 @@ def tarGz(out: IOFile): Future[IOFile]
 def list: Future[List[IOPath]] // List all the files and folders
 def listFiles: Future[List[IOFile]]
 def listDirs: Future[List[IODir]]
-def walk: Future[List[IOPath]]
+def walk: Future[List[IOPath]] // Walk all the files and folders
 def walkFiles: Future[List[IOFile]]
 def walkDirs: Future[List[IODir]]
 def streamWalk: Source[IOPath, NotUsed]

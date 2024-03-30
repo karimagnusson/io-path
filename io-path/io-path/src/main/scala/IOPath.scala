@@ -73,9 +73,8 @@ sealed trait IOPath {
   def isEmpty: Future[Boolean]
   def nonEmpty: Future[Boolean]
 
-  def exists: Future[Boolean] = io.run {
-    Files.exists(path)
-  }
+  def exists: Future[Boolean] = 
+    io.run(Files.exists(path))
 
   def info: Future[IOPathInfo] = io.run {
     IOPathInfo(
@@ -135,9 +134,8 @@ case class IOFile(path: Path)(implicit val io: BlockingIO) extends IOPath {
   def create: Future[IOFile] =
     io.run(Files.createFile(path)).map(_ => this)
 
-  def size: Future[Long] = io.run {
-    Files.size(path)
-  }
+  def size: Future[Long] = 
+    io.run(Files.size(path))
 
   def isEmpty: Future[Boolean] =
     size.map(_ == 0L)
@@ -185,9 +183,8 @@ case class IOFile(path: Path)(implicit val io: BlockingIO) extends IOPath {
 
   // copy
 
-  def copyTo(target: IOFile): Future[Unit] = io.run {
-    Files.copy(path, target.path)
-  }
+  def copyTo(target: IOFile): Future[Unit] = 
+    io.run(Files.copy(path, target.path))
 
   def copyTo(dest: IODir): Future[Unit] = copyTo(dest.file(name))
 
@@ -204,9 +201,8 @@ case class IOFile(path: Path)(implicit val io: BlockingIO) extends IOPath {
 
   // mime
 
-  def mimeType: Future[Option[String]] = io.run {
-    Option(Files.probeContentType(path))
-  }
+  def mimeType: Future[Option[String]] =
+    io.run(Option(Files.probeContentType(path)))
 
   // gzip
 
@@ -381,23 +377,36 @@ case class IODir(path: Path)(implicit val io: BlockingIO) extends IOPath {
   implicit val system: ActorSystem = io.system
   implicit val ec: ExecutionContext = io.defaultEc
 
+  private def pickFiles(paths: List[IOPath]): List[IOFile] =
+    paths.filter(_.isFile).map(_.asInstanceOf[IOFile])
+
+  private def pickDirs(paths: List[IOPath]): List[IODir] =
+    paths.filter(_.isDir).map(_.asInstanceOf[IODir])
+
+  private def listDir(p: Path): List[Path] =
+    Files.list(p).iterator.asScala.toList
+
+  private def walkDir(p: Path): List[Path] =
+    Files.walk(p).iterator.asScala.toList
+
+  private val toIOPath: Path => IOPath = { p =>
+    if (Files.isDirectory(p)) IODir(p) else IOFile(p)
+  }
+
   def isFile = false
   def isDir = true
 
   def relTo(other: IODir) = IODir(other.path.relativize(path))
   def relTo(other: IOFile) = IOFile(other.path.relativize(path))
 
+  def add(other: IOFile) = IOFile(path.resolve(other.path))
+  def add(other: IODir) = IODir(path.resolve(other.path))
   def add(other: IOPath): IOPath = other match {
     case p: IOFile => add(p)
     case p: IODir  => add(p)
   }
 
-  def add(other: IOFile) = IOFile(path.resolve(other.path))
-
-  def add(other: IODir) = IODir(path.resolve(other.path))
-
   def file(fileName: String) = add(IOFile.get(fileName))
-
   def dir(dirName: String) = add(IODir.get(dirName))
 
   def assert: Future[IODir] = io.run {
@@ -443,20 +452,6 @@ case class IODir(path: Path)(implicit val io: BlockingIO) extends IOPath {
     paths.toList
   }
 
-  def delete: Future[Unit] = io.run {
-    def loop(target: IOPath): Unit = {
-      target match {
-        case targetDir: IODir =>
-          listDir(targetDir.path).map(toIOPath).foreach(loop)
-          Files.deleteIfExists(targetDir.path)
-        case targetFile: IOFile =>
-          Files.deleteIfExists(targetFile.path)
-      }
-    }
-    if (Files.exists(path))
-      loop(this)
-  }
-
   def copyTo(other: IODir): Future[Unit] = io.run {
     def loop(source: IOPath, dest: IODir): Unit = {
       source match {
@@ -473,24 +468,44 @@ case class IODir(path: Path)(implicit val io: BlockingIO) extends IOPath {
     loop(this, other)
   }
 
+  // delete
+
+  private def deleteAny(p: Path): Unit = {
+    if (Files.isDirectory(p)) {
+      listDir(p).foreach(deleteAny)
+      Files.deleteIfExists(p)
+    } else {
+      Files.deleteIfExists(p)
+    }
+  }
+
+  def delete: Future[Unit] = io.run {
+    if (Files.exists(path))
+      deleteAny(path)
+  }
+
+  def empty: Future[IODir] =
+    io.run(listDir(path).foreach(deleteAny)).map(_ => this)
+
   // tar
 
-  private val tarMetadata: IOPath => Future[Tuple2[TarArchiveMetadata, Source[ByteString,  Any]]] = {
-    case file: IOFile => io.run {
-      val relPath = parent.path.relativize(file.path).toString
-      (TarArchiveMetadata(relPath, Files.size(file.path)), FileIO.fromPath(file.path))
+  private def tarSource(dir: Path) = io.run {
+    val dirPaths = walkDir(dir).map { dirPath =>
+      val relPath = parent.path.relativize(dirPath).toString
+      if (Files.isDirectory(dirPath)) {
+        (TarArchiveMetadata.directory(relPath), Source.empty)
+      } else {
+        (TarArchiveMetadata(relPath, Files.size(dirPath)), FileIO.fromPath(dirPath))
+      }
     }
-    case dir: IODir => Future.successful {
-      val relPath = parent.path.relativize(dir.path).toString
-      (TarArchiveMetadata.directory(relPath), Source.empty)
-    }
+    Source(dirPaths)
   }
 
   def tar: Future[IOFile] = tar(parent.file(name + ".tar"))
 
   def tar(out: IOFile): Future[IOFile] =
-    streamWalk
-      .mapAsync(1)(tarMetadata)
+    Source
+      .futureSource(tarSource(path))
       .via(Archive.tar())
       .runWith(FileIO.toPath(out.path))
       .map(_ => out)
@@ -498,30 +513,12 @@ case class IODir(path: Path)(implicit val io: BlockingIO) extends IOPath {
   def tarGz: Future[IOFile] = tarGz(parent.file(name + ".tar.gz"))
 
   def tarGz(out: IOFile): Future[IOFile] =
-    streamWalk
-      .mapAsync(1)(tarMetadata)
+    Source
+      .futureSource(tarSource(path))
       .via(Archive.tar().via(Compression.gzip))
       .runWith(FileIO.toPath(out.path))
       .map(_ => out)
 
-  // contents
-
-  private def pickFiles(paths: List[IOPath]): List[IOFile] =
-    paths.filter(_.isFile).map(_.asInstanceOf[IOFile])
-
-  private def pickDirs(paths: List[IOPath]): List[IODir] =
-    paths.filter(_.isDir).map(_.asInstanceOf[IODir])
-
-  private def listDir(p: Path): List[Path] =
-    Files.list(p).iterator.asScala.toList
-
-  private def walkDir(p: Path): List[Path] =
-    Files.walk(p).iterator.asScala.toList
-
-  private val toIOPath: Path => IOPath = { p =>
-    if (Files.isDirectory(p)) IODir(p) else IOFile(p)
-  }
-  
   // list
 
   def list: Future[List[IOPath]] = io.run {
