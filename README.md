@@ -133,13 +133,14 @@ def copyTo(dest: IODir): Future[Unit]
 def rename(target: IOFile): Future[IOFile]
 def rename(fileName: String): Future[IOFile]
 def moveTo(dest: IODir): Future[IOFile]
-def mimeType: Future[String] // detect mime type
+def mimeType: Future[Option[String]] // detect mime type
 def gzip: Future[IOFile] // file name + .gz
 def gzip(out: IOFile): Future[IOFile]
 def ungzip: Future[IOFile] // file name - .gz
 def ungzip(out: IOFile): Future[IOFile]
 def zip(dir: IODir): Future[IOFile] // zip all files in a folder
 def zip(files: List[IOFile]): Future[IOFile] // zip a list of filles
+def unzip: Future[List[IOFile]]
 def unzip(dest: IODir): Future[List[IOFile]] // unzip does not support folders
 def untar: Future[IODir]
 def untar(dest: IODir): Future[IODir]
@@ -163,7 +164,7 @@ def upload(url: String, headers: List[HttpHeader]): Future[String]
 def fromPath(path: Path): IODir
 def rel(parts: String*): IODir // Relative to working directory. Returns full path.
 def get(first: String, rest: String*): IODir
-def mkdirs(dirs: Seq[IODir]): Future[Seq[IODir]]: Seq[IODir]
+def mkdirs(dirs: Seq[String]): Future[List[IODir]]
 ```
 
 ##### Methods:
@@ -171,6 +172,7 @@ def mkdirs(dirs: Seq[IODir]): Future[Seq[IODir]]: Seq[IODir]
 def isFile: Boolean
 def isDir: Boolean
 def relTo(other: IODir): IODir // The rest of the path relative to other
+def relTo(other: IOFile) = IOFile
 def add(other: IOPath): IOPath
 def add(other: IOFile): IOFile
 def add(other: IODir): IODir
@@ -203,4 +205,10 @@ def streamWalk: Source[IOPath, NotUsed]
 def streamWalkFiles: Source[IOFile, NotUsed]
 def streamWalkDirs: Source[IODir, NotUsed]
 ```
+
+
+
+
+
+
 

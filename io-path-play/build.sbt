@@ -36,7 +36,7 @@ lazy val ioPathPlay = (project in file("io-path-play"))
     libraryDependencies ++= Seq(
       "org.apache.pekko" %% "pekko-actor" % "1.0.2",
       "org.playframework" %% "play" % "3.0.1",
-      "io.github.karimagnusson" %% "io-path" % "0.9.1"
+      "io.github.karimagnusson" %% "io-path" % "0.9.2-RC4"
     ),
     scalacOptions ++= Seq(
       "-encoding", "utf8",

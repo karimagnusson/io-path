@@ -20,7 +20,23 @@ import scala.concurrent.{Future, ExecutionContext}
 import org.apache.pekko.actor.ActorSystem
 
 
-case class BlockingIO(system: ActorSystem) {
+trait BlockingIO {
+  val system: ActorSystem
+  val ec: ExecutionContext
+  val defaultEc: ExecutionContext
+  def run[T](fn: => T): Future[T]
+}
+
+
+object BlockingIO {
+  def apply(system: ActorSystem): BlockingIO =
+    DefaultBlockingIO(system)
+}
+
+
+case class DefaultBlockingIO(system: ActorSystem) extends BlockingIO {
+
+  val defaultEc: ExecutionContext = system.dispatcher
 
   val ec: ExecutionContext = system.dispatchers.lookup(
     "pekko.actor.default-blocking-io-dispatcher"
