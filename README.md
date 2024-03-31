@@ -12,6 +12,16 @@ This project is set up to package for Scala 2.13 and Scala 3.
 
 Please report bugs if you find them and feel free to DM me on Twitter if you have any questions.
 
+#### Sbt
+```sbt
+// Available for Scala 2.13 and Scala 3
+libraryDependencies += "io.github.karimagnusson" %% "io-path" % "0.9.2"
+
+// Integration with Play framework
+libraryDependencies += "io.github.karimagnusson" %% "io-path-play" % "0.9.2"
+```
+
+
 #### Example
 ```scala
 import io.github.karimagnusson.io.path._

@@ -335,15 +335,12 @@ case class IOFile(path: Path)(implicit val io: BlockingIO) extends IOPath {
         .map(_.getOrElse("application/octet-stream"))
         .map(ContentType.parse(_))
         .map(_.getOrElse(throw new IOException(s"Unable to pars content type: $path")))
-      
-      contentLength <- size
-        .map(s => RawHeader("Content-Length", s.toString))
 
       rsp <- Http()
         .singleRequest(HttpRequest(
           POST,
           Uri(url),
-          contentLength +: headers,
+          headers,
           HttpEntity(contentType, stream)
         ))
         .flatMap(_.entity.toStrict(2.seconds))
