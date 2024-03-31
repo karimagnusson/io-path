@@ -8,8 +8,6 @@ io-path depends on Pekko. Akka is now licenced and not open for further developm
 
 io-path-play provides a module for integration with Play framework.
 
-This project is set up to package for Scala 2.13 and Scala 3.
-
 Please report bugs if you find them and feel free to DM me on Twitter if you have any questions.
 
 #### Sbt
@@ -20,7 +18,6 @@ libraryDependencies += "io.github.karimagnusson" %% "io-path" % "0.9.2"
 // Integration with Play framework
 libraryDependencies += "io.github.karimagnusson" %% "io-path-play" % "0.9.2"
 ```
-
 
 #### Example
 ```scala
