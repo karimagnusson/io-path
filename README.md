@@ -4,7 +4,7 @@
 
 io-path is a simple library for working with files and folders. It is a wrapper for java.nio.files.Path. Files and folders are handled separately with IOFile and IODir which provide convenient methods for working with files and folders.
 
-io-path depends on Pekko. Akka is now licenced and not open for further development. If you are using Akka you might be able to change the imports and compile a version for Akka. Or you could use the older release 0.9.0 that has support for Akka.
+io-path depends on Pekko. Akka is now licenced and not open for further development. If you are using Akka you might be able to change the imports and compile a version for Akka. Or you could use the older release [0.9.0](https://github.com/karimagnusson/io-path/releases/tag/0.9.0) that has support for Akka.
 
 io-path-play provides a module for integration with Play framework.
 
